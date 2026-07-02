@@ -1,83 +1,545 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>360 Viewer</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#020617" />
+  <title>Mobile 360 AR Viewer</title>
 
-  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <!--
+    Standalone mobile 360 image viewer with gyro and hotspots.
+
+    Notes:
+    - Replace PANORAMAS image URLs with your own 2:1 equirectangular 360 images.
+    - Host over HTTPS for mobile gyro/device orientation access.
+    - iOS requires the user to tap Enable Gyro before orientation data is available.
+    - This file is standalone except for the A-Frame CDN script and remote demo images.
+  -->
+
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
 
   <style>
-    body { margin: 0; }
-    #popup {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0,0,0,.8);
-      color: white;
-      padding: 12px 16px;
-      border-radius: 8px;
+    :root {
+      --bg: #020617;
+      --panel: rgba(0, 0, 0, 0.58);
+      --panel-strong: rgba(0, 0, 0, 0.72);
+      --text: #ffffff;
+      --muted: #cbd5e1;
+      --cyan: #22d3ee;
+      --cyan-button: #67e8f9;
+      --cyan-button-hover: #a5f3fc;
+      --slate: #0f172a;
+      --white: #ffffff;
+      --yellow: #facc15;
+      --blue: #38bdf8;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-text-size-adjust: 100%;
+      touch-action: manipulation;
+    }
+
+    #app {
+      position: relative;
+      width: 100vw;
+      height: 100dvh;
+      min-height: 100vh;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    a-scene {
+      width: 100%;
+      height: 100%;
+    }
+
+    .topbar {
+      position: absolute;
+      z-index: 20;
+      top: calc(12px + env(safe-area-inset-top));
+      left: 12px;
+      right: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.32);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .titleblock {
+      min-width: 190px;
+      margin-right: auto;
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      line-height: 1.2;
+      color: #a5f3fc;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+    }
+
+    .scene-title {
+      margin-top: 2px;
+      font-size: 20px;
+      line-height: 1.2;
+      font-weight: 800;
+    }
+
+    .status {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    button,
+    select {
+      border: 0;
+      border-radius: 14px;
+      min-height: 42px;
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+      padding: 10px 14px;
+      background: var(--cyan-button);
+      color: #020617;
+      font-size: 14px;
+      font-weight: 800;
+      box-shadow: 0 8px 20px rgba(34, 211, 238, 0.18);
+    }
+
+    button:hover,
+    button:focus-visible { background: var(--cyan-button-hover); }
+
+    select {
+      max-width: 45vw;
+      padding: 10px 34px 10px 12px;
+      background: #1e293b;
+      color: var(--white);
+      outline: 1px solid rgba(255,255,255,0.16);
+    }
+
+    .loading {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      text-align: center;
+      background: var(--bg);
+    }
+
+    .loading-title {
+      margin-bottom: 8px;
+      font-size: 28px;
+      font-weight: 900;
+    }
+
+    .loading-copy { color: var(--muted); }
+
+    .tip {
+      pointer-events: none;
+      position: absolute;
+      z-index: 20;
+      left: 12px;
+      right: 12px;
+      bottom: calc(12px + env(safe-area-inset-bottom));
+      border-radius: 16px;
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.46);
+      color: #e2e8f0;
+      font-size: 12px;
+      line-height: 1.35;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    .modal-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 40;
       display: none;
-      z-index: 999;
+      place-items: center;
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .modal-backdrop.open { display: grid; }
+
+    .modal {
+      width: min(440px, 100%);
+      border-radius: 28px;
+      padding: 24px;
+      background: #ffffff;
+      color: #020617;
+      box-shadow: 0 28px 70px rgba(0, 0, 0, 0.42);
+    }
+
+    .modal-kicker {
+      margin-bottom: 6px;
+      color: #0e7490;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .modal h2 {
+      margin: 0 0 10px;
+      font-size: 26px;
+      line-height: 1.15;
+    }
+
+    .modal p {
+      margin: 0 0 18px;
+      color: #475569;
+      line-height: 1.5;
+    }
+
+    .modal button {
+      background: #020617;
+      color: white;
+      box-shadow: none;
+    }
+
+    .modal button:hover,
+    .modal button:focus-visible { background: #1e293b; }
+
+    @media (max-width: 560px) {
+      .topbar { align-items: stretch; }
+      .titleblock { width: 100%; margin-right: 0; }
+      button, select { flex: 1 1 auto; }
+      select { max-width: none; }
+      .tip { font-size: 11px; }
     }
   </style>
 </head>
 <body>
+  <div id="app">
+    <div class="topbar">
+      <div class="titleblock">
+        <div class="eyebrow">Mobile 360 AR Viewer</div>
+        <div id="sceneTitle" class="scene-title">Lobby</div>
+        <div id="status" class="status">Loading 360 engine...</div>
+      </div>
+      <button id="gyroButton" type="button">Enable Gyro</button>
+      <select id="sceneSelect" aria-label="Select 360 scene"></select>
+    </div>
 
-<div id="popup"></div>
+    <div id="loading" class="loading">
+      <div>
+        <div class="loading-title">Loading viewer...</div>
+        <div class="loading-copy">This loads A-Frame, then creates a mobile 360 scene.</div>
+      </div>
+    </div>
 
-<a-scene>
+    <a-scene
+      id="aframeScene"
+      embedded
+      renderer="antialias: true; colorManagement: true"
+      vr-mode-ui="enabled: true"
+      device-orientation-permission-ui="enabled: false"
+    >
+      <a-assets id="assetContainer" timeout="10000"></a-assets>
 
-  <a-assets>
-    <img id="pano" src="Park 2.jpg">
-  </a-assets>
+      <a-sky
+        id="image360"
+        radius="30"
+        rotation="0 -90 0"
+        material="opacity: 1; transparent: true"
+      ></a-sky>
 
-  <!-- 360 image -->
-  <a-sky src="#pano" rotation="0 -90 0"></a-sky>
+      <a-entity id="hotspotContainer"></a-entity>
 
-  <!-- Camera -->
-  <a-camera>
-    <a-cursor color="#FF0000"></a-cursor>
-  </a-camera>
+      <a-entity
+        id="cameraRig"
+        camera
+        look-controls="enabled: true; touchEnabled: true; mouseEnabled: true; magicWindowTrackingEnabled: true"
+        wasd-controls="enabled: false"
+        position="0 1.6 0"
+      >
+        <a-cursor
+          fuse="false"
+          raycaster="objects: .hotspot"
+          material="color: white; shader: flat; opacity: 0.75"
+          geometry="primitive: ring; radiusInner: 0.012; radiusOuter: 0.02"
+        ></a-cursor>
+      </a-entity>
+    </a-scene>
 
-  <!-- Hotspot 1 -->
-  <a-entity
-    geometry="primitive:sphere;radius:0.15"
-    material="color:#ff5722"
-    position="2 1 -4"
-    hotspot="text: Main Entrance">
-  </a-entity>
+    <div class="tip">
+      Tip: use 2:1 equirectangular images, host the site on HTTPS, and keep image files compressed for mobile performance.
+    </div>
 
-  <!-- Hotspot 2 -->
-  <a-entity
-    geometry="primitive:sphere;radius:0.15"
-    material="color:#00bcd4"
-    position="-3 1.5 -3"
-    hotspot="text: Reception Area">
-  </a-entity>
+    <div id="modalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal" id="modalCard">
+        <div class="modal-kicker">Hotspot</div>
+        <h2 id="modalTitle">Hotspot</h2>
+        <p id="modalBody">Hotspot text.</p>
+        <button id="modalClose" type="button">Close</button>
+      </div>
+    </div>
+  </div>
 
-</a-scene>
+  <script>
+    const PANORAMAS = {
+      lobby: {
+        title: "Lobby",
+        // Replace with your own 360 image. Must be equirectangular 2:1 for best results.
+        image: "https://raw.githubusercontent.com/eyegnats/ar/main/Park%202.jpg",
+        hotspots: [
+          {
+            id: "info-desk",
+            type: "info",
+            label: "Info Desk",
+            position: "-3 1.7 -4",
+            title: "Information Desk",
+            body: "Add text, audio, video, quizzes, or navigation here. This hotspot is gaze/click/tap enabled."
+          },
+          {
+            id: "to-gallery",
+            type: "scene",
+            label: "Go to Gallery",
+            position: "3 1.45 -4",
+            targetScene: "gallery"
+          }
+        ]
+      },
+      gallery: {
+        title: "Gallery",
+        image: "https://cdn.aframe.io/360-image-gallery-boilerplate/img/sechelt.jpg",
+        hotspots: [
+          {
+            id: "gallery-note",
+            type: "info",
+            label: "Gallery Note",
+            position: "0 1.7 -4",
+            title: "Gallery Hotspot",
+            body: "Hotspots are normal A-Frame entities, so you can style them, animate them, or attach richer interactions."
+          },
+          {
+            id: "to-lobby",
+            type: "scene",
+            label: "Back to Lobby",
+            position: "-3 1.45 -4",
+            targetScene: "lobby"
+          }
+        ]
+      }
+    };
 
-<script>
-AFRAME.registerComponent('hotspot', {
-  schema: {
-    text: {type: 'string'}
-  },
+    const state = {
+      currentSceneId: "lobby"
+    };
 
-  init: function () {
-    this.el.addEventListener('click', () => {
-      const popup = document.getElementById('popup');
-      popup.innerText = this.data.text;
-      popup.style.display = 'block';
+    const els = {};
 
-      setTimeout(() => {
-        popup.style.display = 'none';
-      }, 3000);
-    });
-  }
-});
-</script>
+    function setStatus(message) {
+      els.status.textContent = message;
+    }
 
+    function escapeAttribute(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    function makeHotspotEntity(hotspot) {
+      const wrapper = document.createElement("a-entity");
+      wrapper.classList.add("hotspot");
+      wrapper.setAttribute("position", hotspot.position);
+      wrapper.setAttribute("data-hotspot-id", hotspot.id);
+
+      const color = hotspot.type === "scene" ? "#38bdf8" : "#facc15";
+      const emissive = hotspot.type === "scene" ? "#0ea5e9" : "#ca8a04";
+
+      wrapper.innerHTML = `
+        <a-sphere
+          radius="0.18"
+          color="${color}"
+          emissive="${emissive}"
+          emissive-intensity="0.35"
+          animation="property: rotation; to: 0 360 0; loop: true; dur: 6000; easing: linear"
+        ></a-sphere>
+        <a-ring
+          radius-inner="0.22"
+          radius-outer="0.28"
+          color="#ffffff"
+          opacity="0.78"
+          animation="property: scale; from: 1 1 1; to: 1.25 1.25 1.25; dir: alternate; loop: true; dur: 900"
+        ></a-ring>
+        <a-text
+          value="${escapeAttribute(hotspot.label)}"
+          align="center"
+          width="3.2"
+          color="#ffffff"
+          position="0 -0.42 0"
+          side="double"
+        ></a-text>
+      `;
+
+      wrapper.addEventListener("click", () => handleHotspot(hotspot));
+      wrapper.addEventListener("mouseenter", () => wrapper.setAttribute("scale", "1.18 1.18 1.18"));
+      wrapper.addEventListener("mouseleave", () => wrapper.setAttribute("scale", "1 1 1"));
+
+      return wrapper;
+    }
+
+    function preloadAssets() {
+      els.assetContainer.innerHTML = "";
+
+      Object.entries(PANORAMAS).forEach(([id, scene]) => {
+        const img = document.createElement("img");
+        img.id = `pano-${id}`;
+        img.src = scene.image;
+        img.crossOrigin = "anonymous";
+        els.assetContainer.appendChild(img);
+      });
+    }
+
+    function populateSceneSelect() {
+      els.sceneSelect.innerHTML = "";
+
+      Object.entries(PANORAMAS).forEach(([id, scene]) => {
+        const option = document.createElement("option");
+        option.value = id;
+        option.textContent = scene.title;
+        els.sceneSelect.appendChild(option);
+      });
+
+      els.sceneSelect.value = state.currentSceneId;
+    }
+
+    function setScene(sceneId) {
+      if (!PANORAMAS[sceneId]) return;
+
+      state.currentSceneId = sceneId;
+      const scene = PANORAMAS[sceneId];
+
+      els.sceneTitle.textContent = scene.title;
+      els.sceneSelect.value = sceneId;
+      els.image360.setAttribute("src", `#pano-${sceneId}`);
+      els.image360.setAttribute("animation__fade", "property: material.opacity; from: 0.15; to: 1; dur: 450; easing: easeOutQuad");
+
+      els.hotspotContainer.innerHTML = "";
+      scene.hotspots.forEach((hotspot) => {
+        els.hotspotContainer.appendChild(makeHotspotEntity(hotspot));
+      });
+
+      closeModal();
+      setStatus("Ready. Drag to look around or enable gyro on mobile.");
+    }
+
+    function handleHotspot(hotspot) {
+      if (hotspot.type === "scene" && hotspot.targetScene && PANORAMAS[hotspot.targetScene]) {
+        setScene(hotspot.targetScene);
+        return;
+      }
+
+      openModal(hotspot.title || hotspot.label || "Hotspot", hotspot.body || "");
+    }
+
+    function openModal(title, body) {
+      els.modalTitle.textContent = title;
+      els.modalBody.textContent = body;
+      els.modalBackdrop.classList.add("open");
+    }
+
+    function closeModal() {
+      els.modalBackdrop.classList.remove("open");
+    }
+
+    async function enableGyro() {
+      try {
+        // iOS 13+ requires this call to happen from a user gesture.
+        if (
+          typeof window.DeviceOrientationEvent !== "undefined" &&
+          typeof window.DeviceOrientationEvent.requestPermission === "function"
+        ) {
+          const response = await window.DeviceOrientationEvent.requestPermission();
+          if (response !== "granted") {
+            setStatus("Gyro permission was denied. You can still drag to look around.");
+            return;
+          }
+        }
+
+        // Wake/reapply A-Frame look controls after permission.
+        els.cameraRig.setAttribute(
+          "look-controls",
+          "enabled: true; touchEnabled: true; mouseEnabled: true; magicWindowTrackingEnabled: true"
+        );
+
+        setStatus("Gyro enabled. Move your phone to look around.");
+      } catch (error) {
+        setStatus("Gyro could not be enabled. Serve over HTTPS and trigger from a tap/click.");
+      }
+    }
+
+    function boot() {
+      els.status = document.getElementById("status");
+      els.sceneTitle = document.getElementById("sceneTitle");
+      els.sceneSelect = document.getElementById("sceneSelect");
+      els.gyroButton = document.getElementById("gyroButton");
+      els.loading = document.getElementById("loading");
+      els.assetContainer = document.getElementById("assetContainer");
+      els.image360 = document.getElementById("image360");
+      els.hotspotContainer = document.getElementById("hotspotContainer");
+      els.cameraRig = document.getElementById("cameraRig");
+      els.modalBackdrop = document.getElementById("modalBackdrop");
+      els.modalCard = document.getElementById("modalCard");
+      els.modalTitle = document.getElementById("modalTitle");
+      els.modalBody = document.getElementById("modalBody");
+      els.modalClose = document.getElementById("modalClose");
+
+      preloadAssets();
+      populateSceneSelect();
+      setScene(state.currentSceneId);
+
+      els.sceneSelect.addEventListener("change", (event) => setScene(event.target.value));
+      els.gyroButton.addEventListener("click", enableGyro);
+      els.modalClose.addEventListener("click", closeModal);
+      els.modalBackdrop.addEventListener("click", closeModal);
+      els.modalCard.addEventListener("click", (event) => event.stopPropagation());
+
+      const sceneEl = document.getElementById("aframeScene");
+      if (sceneEl.hasLoaded) {
+        els.loading.style.display = "none";
+      } else {
+        sceneEl.addEventListener("loaded", () => {
+          els.loading.style.display = "none";
+        });
+      }
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", boot);
+    } else {
+      boot();
+    }
+  </script>
 </body>
 </html>
