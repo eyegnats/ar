@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>360 Viewer</title>
+
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
+  <style>
+    body { margin: 0; }
+    #popup {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,.8);
+      color: white;
+      padding: 12px 16px;
+      border-radius: 8px;
+      display: none;
+      z-index: 999;
+    }
+  </style>
+</head>
+<body>
+
+<div id="popup"></div>
+
+<a-scene>
+
+  <a-assets>
+    <img id="pano" src="C:\Users\kend0050\Downloads\Park 2.jpg">
+  </a-assets>
+
+  <!-- 360 image -->
+  <a-sky src="#pano" rotation="0 -90 0"></a-sky>
+
+  <!-- Camera -->
+  <a-camera>
+    <a-cursor color="#FF0000"></a-cursor>
+  </a-camera>
+
+  <!-- Hotspot 1 -->
+  <a-entity
+    geometry="primitive:sphere;radius:0.15"
+    material="color:#ff5722"
+    position="2 1 -4"
+    hotspot="text: Main Entrance">
+  </a-entity>
+
+  <!-- Hotspot 2 -->
+  <a-entity
+    geometry="primitive:sphere;radius:0.15"
+    material="color:#00bcd4"
+    position="-3 1.5 -3"
+    hotspot="text: Reception Area">
+  </a-entity>
+
+</a-scene>
+
+<script>
+AFRAME.registerComponent('hotspot', {
+  schema: {
+    text: {type: 'string'}
+  },
+
+  init: function () {
+    this.el.addEventListener('click', () => {
+      const popup = document.getElementById('popup');
+      popup.innerText = this.data.text;
+      popup.style.display = 'block';
+
+      setTimeout(() => {
+        popup.style.display = 'none';
+      }, 3000);
+    });
+  }
+});
+</script>
+
+</body>
+</html>
