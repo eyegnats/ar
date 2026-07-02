@@ -56,11 +56,14 @@
       min-height: 100vh;
       overflow: hidden;
       background: var(--bg);
+      touch-action: none;
     }
 
-    a-scene {
+    a-scene,
+    canvas {
       width: 100%;
       height: 100%;
+      touch-action: none;
     }
 
     .topbar {
@@ -290,7 +293,7 @@
     </a-scene>
 
     <div class="tip">
-      Tip: use 2:1 equirectangular images, host the site on HTTPS, and keep image files compressed for mobile performance.
+      Tip: drag with one finger left/right or up/down to explore. Use 2:1 equirectangular images and host over HTTPS for gyro.
     </div>
 
     <div id="modalBackdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
@@ -351,7 +354,16 @@
     };
 
     const state = {
-      currentSceneId: "lobby"
+      currentSceneId: "lobby",
+      touchLook: {
+        active: false,
+        pointerId: null,
+        lastX: 0,
+        lastY: 0,
+        yaw: -90,
+        pitch: 0,
+        sensitivity: 0.16
+      }
     };
 
     const els = {};
@@ -488,18 +500,121 @@
         }
 
         // Wake/reapply A-Frame look controls after permission.
-        els.cameraRig.setAttribute(
-          "look-controls",
-          "enabled: true; touchEnabled: true; mouseEnabled: true; magicWindowTrackingEnabled: true"
-        );
+        enableAFrameLookControls();
 
-        setStatus("Gyro enabled. Move your phone to look around.");
+        setStatus("Gyro enabled. Move your phone to look around. You can also drag up/down with one finger.");
       } catch (error) {
         setStatus("Gyro could not be enabled. Serve over HTTPS and trigger from a tap/click.");
       }
     }
 
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function applyManualTouchLook() {
+      // Rotate the camera rig horizontally and the camera child vertically.
+      // Pitch is clamped so the user cannot flip past straight up/down.
+      const camera = els.cameraRig;
+      if (!camera) return;
+      camera.setAttribute("rotation", `0 ${state.touchLook.yaw} 0`);
+      camera.setAttribute("look-controls", "enabled: false");
+      camera.object3D.rotation.x = THREE.MathUtils.degToRad(state.touchLook.pitch);
+    }
+
+    function enableAFrameLookControls() {
+      if (!els.cameraRig) return;
+      els.cameraRig.setAttribute(
+        "look-controls",
+        "enabled: true; touchEnabled: true; mouseEnabled: true; magicWindowTrackingEnabled: true"
+      );
+    }
+
+    function setupTouchLook() {
+      const sceneCanvas = () => els.scene.canvas || document.querySelector("canvas");
+
+      const start = (event) => {
+        const pointer = event.changedTouches ? event.changedTouches[0] : event;
+        if (!pointer || state.touchLook.active) return;
+
+        // Do not steal interactions that start on UI controls.
+        if (event.target.closest && event.target.closest(".topbar, .modal-backdrop, .tip")) return;
+
+        state.touchLook.active = true;
+        state.touchLook.pointerId = pointer.identifier ?? pointer.pointerId ?? "mouse";
+        state.touchLook.lastX = pointer.clientX;
+        state.touchLook.lastY = pointer.clientY;
+        event.preventDefault();
+      };
+
+      const move = (event) => {
+        if (!state.touchLook.active) return;
+
+        let pointer = event;
+        if (event.changedTouches) {
+          pointer = Array.from(event.changedTouches).find(
+            (touch) => touch.identifier === state.touchLook.pointerId
+          );
+          if (!pointer) return;
+        }
+
+        const dx = pointer.clientX - state.touchLook.lastX;
+        const dy = pointer.clientY - state.touchLook.lastY;
+
+        state.touchLook.lastX = pointer.clientX;
+        state.touchLook.lastY = pointer.clientY;
+
+        state.touchLook.yaw -= dx * state.touchLook.sensitivity;
+        state.touchLook.pitch = clamp(
+          state.touchLook.pitch - dy * state.touchLook.sensitivity,
+          -85,
+          85
+        );
+
+        applyManualTouchLook();
+        setStatus("Touch look enabled. Drag left/right or up/down to explore.");
+        event.preventDefault();
+      };
+
+      const end = (event) => {
+        if (!state.touchLook.active) return;
+
+        if (event.changedTouches) {
+          const pointer = Array.from(event.changedTouches).find(
+            (touch) => touch.identifier === state.touchLook.pointerId
+          );
+          if (!pointer) return;
+        }
+
+        state.touchLook.active = false;
+        state.touchLook.pointerId = null;
+      };
+
+      const attach = () => {
+        const canvas = sceneCanvas();
+        const target = canvas || els.scene;
+        if (!target) return;
+
+        target.addEventListener("touchstart", start, { passive: false });
+        target.addEventListener("touchmove", move, { passive: false });
+        target.addEventListener("touchend", end, { passive: false });
+        target.addEventListener("touchcancel", end, { passive: false });
+
+        target.addEventListener("pointerdown", start);
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", end);
+        window.addEventListener("pointercancel", end);
+      };
+
+      if (els.scene.canvas) {
+        attach();
+      } else {
+        els.scene.addEventListener("render-target-loaded", attach, { once: true });
+      }
+    }
+
     function boot() {
+      els.scene = document.getElementById("aframeScene");
       els.status = document.getElementById("status");
       els.sceneTitle = document.getElementById("sceneTitle");
       els.sceneSelect = document.getElementById("sceneSelect");
@@ -524,6 +639,7 @@
       els.modalClose.addEventListener("click", closeModal);
       els.modalBackdrop.addEventListener("click", closeModal);
       els.modalCard.addEventListener("click", (event) => event.stopPropagation());
+      setupTouchLook();
 
       const sceneEl = document.getElementById("aframeScene");
       if (sceneEl.hasLoaded) {
