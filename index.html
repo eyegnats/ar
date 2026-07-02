@@ -487,24 +487,29 @@
 
     async function enableGyro() {
       try {
-        // iOS 13+ requires this call to happen from a user gesture.
+
         if (
-          typeof window.DeviceOrientationEvent !== "undefined" &&
-          typeof window.DeviceOrientationEvent.requestPermission === "function"
+          typeof DeviceOrientationEvent !== "undefined" &&
+          typeof DeviceOrientationEvent.requestPermission === "function"
         ) {
-          const response = await window.DeviceOrientationEvent.requestPermission();
-          if (response !== "granted") {
-            setStatus("Gyro permission was denied. You can still drag to look around.");
+          const permission =
+            await DeviceOrientationEvent.requestPermission();
+
+          if (permission !== "granted") {
             return;
           }
         }
 
-        // Wake/reapply A-Frame look controls after permission.
-        enableAFrameLookControls();
+        els.cameraRig.setAttribute(
+          "look-controls",
+          "enabled: true; touchEnabled: true; mouseEnabled: true; magicWindowTrackingEnabled: true"
+        );
 
-        setStatus("Gyro enabled. Move your phone to look around. You can also drag up/down with one finger.");
-      } catch (error) {
-        setStatus("Gyro could not be enabled. Serve over HTTPS and trigger from a tap/click.");
+        setStatus(
+          "Gyro enabled. You can still drag with a finger or mouse."
+        );
+      } catch (err) {
+        console.error(err);
       }
     }
 
@@ -639,7 +644,7 @@
       els.modalClose.addEventListener("click", closeModal);
       els.modalBackdrop.addEventListener("click", closeModal);
       els.modalCard.addEventListener("click", (event) => event.stopPropagation());
-      setupTouchLook();
+      
 
       const sceneEl = document.getElementById("aframeScene");
       if (sceneEl.hasLoaded) {
