@@ -282,6 +282,7 @@
         look-controls="enabled: true; touchEnabled: true; mouseEnabled: true; magicWindowTrackingEnabled: true"
         wasd-controls="enabled: false"
         position="0 1.6 0"
+        gyro-drag-offset
       >
         <a-cursor
           fuse="false"
@@ -307,7 +308,31 @@
   </div>
 
   <script>
-    const PANORAMAS = {
+    
+AFRAME.registerComponent("gyro-drag-offset", {
+  init() {
+    this.yaw = 0;
+    this.pitch = 0;
+    this.dragging = false;
+    this.lastX = 0; this.lastY = 0;
+    const cvs = () => this.el.sceneEl.canvas || this.el.sceneEl;
+    const start = e => { const t=e.touches?e.touches[0]:e; this.dragging=true; this.lastX=t.clientX; this.lastY=t.clientY; };
+    const move = e => { if(!this.dragging) return; const t=e.touches?e.touches[0]:e; const dx=t.clientX-this.lastX; const dy=t.clientY-this.lastY; this.lastX=t.clientX; this.lastY=t.clientY; this.yaw -= dx*0.15; this.pitch=Math.max(-85,Math.min(85,this.pitch-dy*0.15)); };
+    const end = ()=> this.dragging=false;
+    this.el.sceneEl.addEventListener('render-target-loaded',()=>{ const c=cvs(); c.addEventListener('touchstart',start,{passive:true}); c.addEventListener('touchmove',move,{passive:true}); c.addEventListener('touchend',end); });
+  },
+  tick() {
+    this.el.object3D.rotation.y += 0;
+    const lc=this.el.components['look-controls'];
+    if(lc && lc.pitchObject && lc.yawObject){
+      lc.yawObject.rotation.y += 0;
+      lc.yawObject.rotation.y = THREE.MathUtils.degToRad(this.yaw);
+      lc.pitchObject.rotation.x = THREE.MathUtils.degToRad(this.pitch);
+    }
+  }
+});
+
+const PANORAMAS = {
       lobby: {
         title: "Lobby",
         // Replace with your own 360 image. Must be equirectangular 2:1 for best results.
@@ -513,6 +538,111 @@
       }
     }
 
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function applyManualTouchLook() {
+      // Rotate the camera rig horizontally and the camera child vertically.
+      // Pitch is clamped so the user cannot flip past straight up/down.
+      const camera = els.cameraRig;
+      if (!camera) return;
+      camera.setAttribute("rotation", `0 ${state.touchLook.yaw} 0`);
+      camera.setAttribute("look-controls", "enabled: false");
+      camera.object3D.rotation.x = THREE.MathUtils.degToRad(state.touchLook.pitch);
+    }
+
+    function enableAFrameLookControls() {
+      if (!els.cameraRig) return;
+      els.cameraRig.setAttribute(
+        "look-controls",
+        "enabled: true; touchEnabled: true; mouseEnabled: true; magicWindowTrackingEnabled: true"
+      );
+    }
+
+    function setupTouchLook() {
+      const sceneCanvas = () => els.scene.canvas || document.querySelector("canvas");
+
+      const start = (event) => {
+        const pointer = event.changedTouches ? event.changedTouches[0] : event;
+        if (!pointer || state.touchLook.active) return;
+
+        // Do not steal interactions that start on UI controls.
+        if (event.target.closest && event.target.closest(".topbar, .modal-backdrop, .tip")) return;
+
+        state.touchLook.active = true;
+        state.touchLook.pointerId = pointer.identifier ?? pointer.pointerId ?? "mouse";
+        state.touchLook.lastX = pointer.clientX;
+        state.touchLook.lastY = pointer.clientY;
+        event.preventDefault();
+      };
+
+      const move = (event) => {
+        if (!state.touchLook.active) return;
+
+        let pointer = event;
+        if (event.changedTouches) {
+          pointer = Array.from(event.changedTouches).find(
+            (touch) => touch.identifier === state.touchLook.pointerId
+          );
+          if (!pointer) return;
+        }
+
+        const dx = pointer.clientX - state.touchLook.lastX;
+        const dy = pointer.clientY - state.touchLook.lastY;
+
+        state.touchLook.lastX = pointer.clientX;
+        state.touchLook.lastY = pointer.clientY;
+
+        state.touchLook.yaw -= dx * state.touchLook.sensitivity;
+        state.touchLook.pitch = clamp(
+          state.touchLook.pitch - dy * state.touchLook.sensitivity,
+          -85,
+          85
+        );
+
+        applyManualTouchLook();
+        setStatus("Touch look enabled. Drag left/right or up/down to explore.");
+        event.preventDefault();
+      };
+
+      const end = (event) => {
+        if (!state.touchLook.active) return;
+
+        if (event.changedTouches) {
+          const pointer = Array.from(event.changedTouches).find(
+            (touch) => touch.identifier === state.touchLook.pointerId
+          );
+          if (!pointer) return;
+        }
+
+        state.touchLook.active = false;
+        state.touchLook.pointerId = null;
+      };
+
+      const attach = () => {
+        const canvas = sceneCanvas();
+        const target = canvas || els.scene;
+        if (!target) return;
+
+        target.addEventListener("touchstart", start, { passive: false });
+        target.addEventListener("touchmove", move, { passive: false });
+        target.addEventListener("touchend", end, { passive: false });
+        target.addEventListener("touchcancel", end, { passive: false });
+
+        target.addEventListener("pointerdown", start);
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", end);
+        window.addEventListener("pointercancel", end);
+      };
+
+      if (els.scene.canvas) {
+        attach();
+      } else {
+        els.scene.addEventListener("render-target-loaded", attach, { once: true });
+      }
+    }
+
     function boot() {
       els.scene = document.getElementById("aframeScene");
       els.status = document.getElementById("status");
@@ -541,7 +671,6 @@
       els.modalCard.addEventListener("click", (event) => event.stopPropagation());
       
 
-      // Native A-Frame look-controls handles gyro + drag together.
       const sceneEl = document.getElementById("aframeScene");
       if (sceneEl.hasLoaded) {
         els.loading.style.display = "none";
