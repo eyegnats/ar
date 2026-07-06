@@ -277,12 +277,14 @@
       <a-entity id="hotspotContainer"></a-entity>
 
       <a-entity
-        id="cameraRig"
-        camera
-        look-controls="enabled: true; touchEnabled: true; mouseEnabled: true; magicWindowTrackingEnabled: true"
-        wasd-controls="enabled: false"
-        position="0 1.6 0"
-        gyro-drag-offset
+        id="cameraRig" position="0 1.6 0">
+        <a-entity id="dragYaw">
+          <a-entity id="dragPitch">
+            <a-entity
+              id="gyroCamera"
+              camera
+              look-controls="enabled: true; touchEnabled: false; mouseEnabled: false; magicWindowTrackingEnabled: true"
+              wasd-controls="enabled: false"
       >
         <a-cursor
           fuse="false"
@@ -290,6 +292,9 @@
           material="color: white; shader: flat; opacity: 0.75"
           geometry="primitive: ring; radiusInner: 0.012; radiusOuter: 0.02"
         ></a-cursor>
+            </a-entity>
+          </a-entity>
+        </a-entity>
       </a-entity>
     </a-scene>
 
@@ -309,28 +314,8 @@
 
   <script>
     
-AFRAME.registerComponent("gyro-drag-offset", {
-  init() {
-    this.yaw = 0;
-    this.pitch = 0;
-    this.dragging = false;
-    this.lastX = 0; this.lastY = 0;
-    const cvs = () => this.el.sceneEl.canvas || this.el.sceneEl;
-    const start = e => { const t=e.touches?e.touches[0]:e; this.dragging=true; this.lastX=t.clientX; this.lastY=t.clientY; };
-    const move = e => { if(!this.dragging) return; const t=e.touches?e.touches[0]:e; const dx=t.clientX-this.lastX; const dy=t.clientY-this.lastY; this.lastX=t.clientX; this.lastY=t.clientY; this.yaw -= dx*0.15; this.pitch=Math.max(-85,Math.min(85,this.pitch-dy*0.15)); };
-    const end = ()=> this.dragging=false;
-    this.el.sceneEl.addEventListener('render-target-loaded',()=>{ const c=cvs(); c.addEventListener('touchstart',start,{passive:true}); c.addEventListener('touchmove',move,{passive:true}); c.addEventListener('touchend',end); });
-  },
-  tick() {
-    this.el.object3D.rotation.y += 0;
-    const lc=this.el.components['look-controls'];
-    if(lc && lc.pitchObject && lc.yawObject){
-      lc.yawObject.rotation.y += 0;
-      lc.yawObject.rotation.y = THREE.MathUtils.degToRad(this.yaw);
-      lc.pitchObject.rotation.x = THREE.MathUtils.degToRad(this.pitch);
-    }
-  }
-});
+AFRAME.registerComponent("drag-look",{
+ init(){const yaw=document.getElementById("dragYaw");const pitch=document.getElementById("dragPitch");let active=false,lx=0,ly=0,ya=0,pi=0;const s=.18;const start=e=>{if(e.target.closest&&e.target.closest(".topbar,.modal-backdrop"))return;const t=e.touches?e.touches[0]:e;active=true;lx=t.clientX;ly=t.clientY;};const move=e=>{if(!active)return;const t=e.touches?e.touches[0]:e;ya-= (t.clientX-lx)*s; pi=Math.max(-85,Math.min(85,pi-(t.clientY-ly)*s)); lx=t.clientX;ly=t.clientY; yaw.setAttribute("rotation",`0 ${ya} 0`); pitch.setAttribute("rotation",`${pi} 0 0`);};const end=()=>active=false;this.el.sceneEl.addEventListener("render-target-loaded",()=>{const c=this.el.sceneEl.canvas;c.addEventListener("touchstart",start,{passive:true});c.addEventListener("touchmove",move,{passive:true});c.addEventListener("touchend",end);c.addEventListener("pointerdown",start);window.addEventListener("pointermove",move);window.addEventListener("pointerup",end);});}});
 
 const PANORAMAS = {
       lobby: {
@@ -654,6 +639,7 @@ const PANORAMAS = {
       els.image360 = document.getElementById("image360");
       els.hotspotContainer = document.getElementById("hotspotContainer");
       els.cameraRig = document.getElementById("cameraRig");
+      els.cameraRig.setAttribute("drag-look","");
       els.modalBackdrop = document.getElementById("modalBackdrop");
       els.modalCard = document.getElementById("modalCard");
       els.modalTitle = document.getElementById("modalTitle");
