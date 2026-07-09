@@ -268,7 +268,7 @@
       <a-assets id="assetContainer" timeout="10000"></a-assets>
 
       <a-sky
-        id="image360"
+        id="360real"
         radius="30"
         rotation="0 -90 0"
         material="opacity: 1; transparent: true"
@@ -321,7 +321,7 @@ const PANORAMAS = {
       lobby: {
         title: "Lobby",
         // Replace with your own 360 image. Must be equirectangular 2:1 for best results.
-        image: "https://raw.githubusercontent.com/eyegnats/ar/main/Park%202.jpg",
+        image: "https://raw.githubusercontent.com/eyegnats/ar/refs/heads/main/360real.jpg",
         hotspots: [
           {
             id: "info-desk",
@@ -636,7 +636,7 @@ const PANORAMAS = {
       els.gyroButton = document.getElementById("gyroButton");
       els.loading = document.getElementById("loading");
       els.assetContainer = document.getElementById("assetContainer");
-      els.image360 = document.getElementById("image360");
+      els.image360 = document.getElementById("360real");
       els.hotspotContainer = document.getElementById("hotspotContainer");
       els.cameraRig = document.getElementById("cameraRig");
       els.cameraRig.setAttribute("drag-look","");
